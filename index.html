@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Music Jeopardy</title>
+<style>
+  :root {
+    --board-bg: #0a0e2a;
+    --tile-bg: #060ce9;
+    --tile-used: #1a1f4d;
+    --gold: #ffcc00;
+    --text: #ffffff;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: var(--board-bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+    padding: 1rem;
+  }
+
+  h1 {
+    font-size: 2rem;
+    color: var(--gold);
+    text-transform: uppercase;
+    letter-spacing: 3px;
+    text-shadow: 2px 2px 0 #000;
+  }
+
+  /* ---------- Board ---------- */
+  .board {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 6px;
+    width: min(1100px, 98vw);
+  }
+
+  .category, .tile {
+    background: var(--tile-bg);
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 0.5rem;
+    box-shadow: inset 0 0 0 2px rgba(0,0,0,0.35);
+  }
+
+  .category {
+    min-height: 70px;
+    font-weight: 800;
+    text-transform: uppercase;
+    font-size: clamp(0.7rem, 1.6vw, 1.05rem);
+    letter-spacing: 1px;
+  }
+
+  .tile {
+    min-height: 80px;
+    font-size: clamp(1.3rem, 3vw, 2.2rem);
+    font-weight: 800;
+    color: var(--gold);
+    cursor: pointer;
+    transition: transform 0.1s ease, background 0.2s ease;
+    user-select: none;
+  }
+
+  .tile:hover { transform: scale(1.03); }
+
+  .tile.used {
+    background: var(--tile-used);
+    color: rgba(255, 204, 0, 0.25);
+  }
+
+  /* ---------- Teams ---------- */
+  .teams {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: stretch;
+  }
+
+  .team {
+    background: #10154a;
+    border: 2px solid #2a2f7a;
+    border-radius: 10px;
+    padding: 0.6rem 1.2rem;
+    text-align: center;
+    min-width: 140px;
+  }
+
+  .team-name {
+    font-weight: 700;
+    outline: none;
+    border-bottom: 1px dashed transparent;
+  }
+
+  .team-name:focus { border-bottom-color: var(--gold); }
+
+  .team-score {
+    font-size: 1.8rem;
+    font-weight: 800;
+    color: var(--gold);
+    cursor: pointer;
+  }
+
+  .team-score.negative { color: #f87171; }
+
+  .team-controls { display: flex; gap: 0.5rem; justify-content: center; }
+
+  button {
+    font-size: 0.95rem;
+    font-weight: 600;
+    padding: 0.5rem 1rem;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    background: #2a2f7a;
+    color: var(--text);
+    transition: filter 0.15s ease, transform 0.1s ease;
+  }
+
+  button:hover { filter: brightness(1.3); }
+  button:active { transform: scale(0.96); }
+  button.gold { background: var(--gold); color: #222; }
+
+  select {
+    font-size: 1rem;
+    font-weight: 700;
+    padding: 0.5rem 1rem;
+    border: 2px solid var(--gold);
+    border-radius: 8px;
+    background: #10154a;
+    color: var(--gold);
+    cursor: pointer;
+  }
+
+  /* ---------- Modal ---------- */
+  .overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.75);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+  }
+
+  .overlay.open { display: flex; }
+
+  .modal {
+    background: var(--tile-bg);
+    border-radius: 14px;
+    padding: 2rem;
+    width: min(640px, 94vw);
+    max-height: 92vh;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1.2rem;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+  }
+
+  .modal-header {
+    font-size: 1.3rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    color: var(--gold);
+    text-align: center;
+  }
+
+  .timer-track {
+    width: 100%;
+    height: 14px;
+    background: rgba(0, 0, 0, 0.4);
+    border-radius: 7px;
+    overflow: hidden;
+  }
+
+  .timer-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, var(--gold), #ff9500);
+    border-radius: 7px;
+  }
+
+  .timer-fill.running {
+    width: 100%;
+    transition: width linear;
+    transition-duration: var(--clip-seconds);
+  }
+
+  .answer {
+    display: none;
+    text-align: center;
+  }
+
+  .answer.revealed { display: block; }
+
+  .answer .song { font-size: 1.7rem; font-weight: 800; }
+  .answer .artist { font-size: 1.2rem; color: #cdd3ff; margin-top: 0.2rem; }
+
+  .player-wrap {
+    display: none;
+    position: relative;
+    width: min(480px, 88vw);
+    height: min(270px, 49.5vw);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+
+  .player-wrap.visible { display: block; }
+
+  .player-wrap iframe { width: 100%; height: 100%; border: 0; }
+
+  /* Covers the video while the clip plays so nobody sees the title/visuals */
+  .player-cover {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    background: #060a20;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    font-size: 2.5rem;
+  }
+
+  .player-cover small { font-size: 0.9rem; color: #cdd3ff; }
+
+  .player-wrap.revealed .player-cover { display: none; }
+
+  .modal-buttons, .award-row {
+    display: flex;
+    gap: 0.7rem;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .award-row { display: none; }
+  .award-row.revealed { display: flex; }
+
+  .award-hint {
+    display: none;
+    font-size: 0.85rem;
+    color: #cdd3ff;
+  }
+
+  .award-hint.revealed { display: block; }
+
+  .footer-controls { display: flex; gap: 0.75rem; flex-wrap: wrap; justify-content: center; }
+</style>
+</head>
+<body>
+
+<h1>♪ Music Jeopardy ♪</h1>
+
+<select id="boardSelect" title="Choose a board"></select>
+
+<div class="board" id="board"></div>
+
+<div class="teams" id="teams"></div>
+
+<div class="footer-controls">
+  <button id="addTeamBtn">+ Add team</button>
+  <button id="removeTeamBtn">− Remove team</button>
+  <button id="resetBtn">Reset game</button>
+</div>
+
+<div class="overlay" id="overlay">
+  <div class="modal">
+    <div class="modal-header" id="modalHeader"></div>
+    <div class="timer-track"><div class="timer-fill" id="timerFill"></div></div>
+    <div class="player-wrap" id="playerWrap"></div>
+    <div class="answer" id="answerBox">
+      <div class="song" id="answerSong"></div>
+      <div class="artist" id="answerArtist"></div>
+    </div>
+    <div class="modal-buttons">
+      <button class="gold" id="playBtn">▶ Play clip</button>
+      <button id="revealBtn">Reveal answer</button>
+      <button id="closeBtn">Close</button>
+    </div>
+    <div class="award-row" id="awardRow"></div>
+    <div class="award-hint" id="awardHint">Click a team to award points · Shift-click to deduct</div>
+  </div>
+</div>
+
+<script src="boards.js"></script>
+<script>
+/* =====================================================================
+   GAME CONFIG
+   Boards live in boards.js — edit that file to add/change boards.
+   Each clue: { song, artist, yt: <YouTube video id>, start: <seconds> }
+   - yt:    the part after "v=" in a YouTube URL
+   - start: where in the video the clip begins (aim for a chorus!)
+   - length (optional): clip length in seconds, overrides CLIP_SECONDS
+   ===================================================================== */
+const CLIP_SECONDS = 7;
+const POINT_VALUES = [100, 200, 300, 400, 500];
+
+/* Spare verified clues — swap any of these into boards.js:
+   { song: "drivers license", artist: "Olivia Rodrigo", yt: "ZmDBbnmKpqQ", start: 60 },
+   { song: "New Rules", artist: "Dua Lipa", yt: "k2qgadSvNyU", start: 55 },
+   { song: "Watermelon Sugar", artist: "Harry Styles", yt: "E07s5ZYygMg", start: 45 },
+   { song: "Circles", artist: "Post Malone", yt: "wXhTHyIgQ_U", start: 50 },
+   { song: "Dynamite", artist: "BTS", yt: "gdZLi9oWNZg", start: 45 },
+   { song: "DDU-DU DDU-DU", artist: "BLACKPINK", yt: "IHNzOHi8sJs", start: 50 },
+   { song: "thank u, next", artist: "Ariana Grande", yt: "gl1aHhXnN1k", start: 60 },
+   { song: "7 rings", artist: "Ariana Grande", yt: "QYh6mYIJG2Y", start: 40 },
+   { song: "24K Magic", artist: "Bruno Mars", yt: "UqyT8IEBkvY", start: 40 },
+   { song: "Truth Hurts", artist: "Lizzo", yt: "P00HMxdsVZI", start: 30 },
+   { song: "Sugar", artist: "Maroon 5", yt: "09R8_2nJtjg", start: 55 },
+*/
+
+/* ===================== Game state ===================== */
+const defaultState = () => ({
+  teams: [
+    { name: "Team 1", score: 0 },
+    { name: "Team 2", score: 0 },
+  ],
+  board: 0,
+  usedByBoard: {},   // boardIndex -> ["0-2", ...] (categoryIndex-rowIndex)
+});
+
+let state = JSON.parse(sessionStorage.getItem("mjState2") || "null") || defaultState();
+if (state.board >= BOARDS.length) state.board = 0;
+
+const cats = () => BOARDS[state.board].categories;
+const usedList = () => (state.usedByBoard[state.board] ??= []);
+
+function save() {
+  sessionStorage.setItem("mjState2", JSON.stringify(state));
+}
+
+/* ===================== Board ===================== */
+const boardEl = document.getElementById("board");
+const boardSelect = document.getElementById("boardSelect");
+
+BOARDS.forEach((b, i) => {
+  const opt = document.createElement("option");
+  opt.value = i;
+  opt.textContent = b.title;
+  boardSelect.appendChild(opt);
+});
+
+boardSelect.addEventListener("change", () => {
+  state.board = parseInt(boardSelect.value, 10);
+  save();
+  buildBoard();
+});
+
+function buildBoard() {
+  boardSelect.value = state.board;
+  boardEl.innerHTML = "";
+  cats().slice(0, 5).forEach(cat => {
+    const cell = document.createElement("div");
+    cell.className = "category";
+    cell.textContent = cat.title;
+    boardEl.appendChild(cell);
+  });
+  POINT_VALUES.forEach((value, row) => {
+    cats().slice(0, 5).forEach((cat, col) => {
+      const key = `${col}-${row}`;
+      const tile = document.createElement("div");
+      tile.className = "tile" + (usedList().includes(key) ? " used" : "");
+      tile.textContent = "$" + value;
+      tile.addEventListener("click", () => openClue(col, row));
+      tile.dataset.key = key;
+      boardEl.appendChild(tile);
+    });
+  });
+}
+
+/* ===================== Teams ===================== */
+const teamsEl = document.getElementById("teams");
+
+function renderTeams() {
+  teamsEl.innerHTML = "";
+  state.teams.forEach((team, i) => {
+    const div = document.createElement("div");
+    div.className = "team";
+    const name = document.createElement("div");
+    name.className = "team-name";
+    name.contentEditable = "true";
+    name.spellcheck = false;
+    name.textContent = team.name;
+    name.addEventListener("blur", () => {
+      team.name = name.textContent.trim() || `Team ${i + 1}`;
+      name.textContent = team.name;
+      save();
+      renderAwardRow();
+    });
+    const score = document.createElement("div");
+    score.className = "team-score" + (team.score < 0 ? " negative" : "");
+    score.textContent = "$" + team.score;
+    score.title = "Click to edit score manually";
+    score.addEventListener("click", () => {
+      const v = prompt(`Set score for ${team.name}:`, team.score);
+      if (v !== null && !isNaN(parseInt(v, 10))) {
+        team.score = parseInt(v, 10);
+        save();
+        renderTeams();
+      }
+    });
+    div.append(name, score);
+    teamsEl.appendChild(div);
+  });
+}
+
+document.getElementById("addTeamBtn").addEventListener("click", () => {
+  state.teams.push({ name: `Team ${state.teams.length + 1}`, score: 0 });
+  save();
+  renderTeams();
+  renderAwardRow();
+});
+
+document.getElementById("removeTeamBtn").addEventListener("click", () => {
+  if (state.teams.length > 1) state.teams.pop();
+  save();
+  renderTeams();
+  renderAwardRow();
+});
+
+document.getElementById("resetBtn").addEventListener("click", () => {
+  if (!confirm("Reset scores and all boards?")) return;
+  const board = state.board;
+  state = defaultState();
+  state.board = board;
+  save();
+  buildBoard();
+  renderTeams();
+});
+
+/* ===================== Clue modal ===================== */
+const overlay = document.getElementById("overlay");
+const modalHeader = document.getElementById("modalHeader");
+const timerFill = document.getElementById("timerFill");
+const playerWrap = document.getElementById("playerWrap");
+const answerBox = document.getElementById("answerBox");
+const answerSong = document.getElementById("answerSong");
+const answerArtist = document.getElementById("answerArtist");
+const awardRow = document.getElementById("awardRow");
+const awardHint = document.getElementById("awardHint");
+
+let current = null; // { clue, value, key }
+
+function openClue(col, row) {
+  const clue = cats()[col].clues[row];
+  const value = POINT_VALUES[row];
+  current = { clue, value, key: `${col}-${row}` };
+
+  modalHeader.textContent = `${cats()[col].title} — $${value}`;
+  answerBox.classList.remove("revealed");
+  awardRow.classList.remove("revealed");
+  awardHint.classList.remove("revealed");
+  playerWrap.classList.remove("visible", "revealed");
+  playerWrap.innerHTML = "";
+  resetTimer();
+  overlay.classList.add("open");
+}
+
+function embedSrc(clue, { clipOnly, autoplay }) {
+  const len = clue.length || CLIP_SECONDS;
+  const params = new URLSearchParams({
+    start: clue.start,
+    autoplay: autoplay ? 1 : 0,
+    rel: 0,
+    controls: clipOnly ? 0 : 1,
+  });
+  if (clipOnly) params.set("end", clue.start + len);
+  return `https://www.youtube.com/embed/${clue.yt}?${params}`;
+}
+
+function makeIframe(src) {
+  const iframe = document.createElement("iframe");
+  iframe.src = src;
+  iframe.allow = "autoplay; encrypted-media";
+  return iframe;
+}
+
+function resetTimer() {
+  timerFill.classList.remove("running");
+  timerFill.style.width = "0%";
+}
+
+function runTimer(seconds) {
+  resetTimer();
+  // Reflow so the transition restarts from 0
+  void timerFill.offsetWidth;
+  timerFill.style.setProperty("--clip-seconds", seconds + "s");
+  timerFill.classList.add("running");
+}
+
+document.getElementById("playBtn").addEventListener("click", () => {
+  if (!current) return;
+  playerWrap.innerHTML = "";
+  playerWrap.classList.remove("revealed");
+  const cover = document.createElement("div");
+  cover.className = "player-cover";
+  cover.innerHTML = "🎵<small>Listen…</small>";
+  const iframe = makeIframe(embedSrc(current.clue, { clipOnly: true, autoplay: true }));
+  const len = current.clue.length || CLIP_SECONDS;
+  // Start the countdown once the embed has loaded (playback starts right after)
+  iframe.addEventListener("load", () => setTimeout(() => runTimer(len), 400));
+  playerWrap.append(cover, iframe);
+  playerWrap.classList.add("visible");
+});
+
+document.getElementById("revealBtn").addEventListener("click", () => {
+  if (!current) return;
+  answerSong.textContent = current.clue.song;
+  answerArtist.textContent = current.clue.artist;
+  answerBox.classList.add("revealed");
+  awardRow.classList.add("revealed");
+  awardHint.classList.add("revealed");
+  renderAwardRow();
+  // Show the actual video with controls (paused at the clip start)
+  playerWrap.innerHTML = "";
+  playerWrap.appendChild(makeIframe(embedSrc(current.clue, { clipOnly: false, autoplay: false })));
+  playerWrap.classList.add("visible", "revealed");
+  resetTimer();
+});
+
+function renderAwardRow() {
+  awardRow.innerHTML = "";
+  state.teams.forEach(team => {
+    const btn = document.createElement("button");
+    btn.className = "gold";
+    btn.textContent = team.name;
+    btn.addEventListener("click", e => {
+      team.score += e.shiftKey ? -current.value : current.value;
+      save();
+      renderTeams();
+      closeClue();
+    });
+    awardRow.appendChild(btn);
+  });
+  const nobody = document.createElement("button");
+  nobody.textContent = "No one";
+  nobody.addEventListener("click", closeClue);
+  awardRow.appendChild(nobody);
+}
+
+function closeClue() {
+  if (current && !usedList().includes(current.key)) {
+    usedList().push(current.key);
+    save();
+  }
+  overlay.classList.remove("open");
+  playerWrap.innerHTML = ""; // stop any audio
+  const tile = boardEl.querySelector(`[data-key="${current.key}"]`);
+  if (tile) tile.classList.add("used");
+  current = null;
+}
+
+document.getElementById("closeBtn").addEventListener("click", closeClue);
+overlay.addEventListener("click", e => {
+  if (e.target === overlay) closeClue();
+});
+
+buildBoard();
+renderTeams();
+</script>
+
+</body>
+</html>
