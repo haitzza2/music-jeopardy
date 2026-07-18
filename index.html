@@ -281,7 +281,10 @@
   <div class="modal">
     <div class="modal-header" id="modalHeader"></div>
     <div class="timer-track"><div class="timer-fill" id="timerFill"></div></div>
-    <div class="player-wrap" id="playerWrap"></div>
+    <div class="player-wrap" id="playerWrap">
+      <div id="ytplayer"></div>
+      <div class="player-cover">🎵<small>Listen…</small></div>
+    </div>
     <div class="answer" id="answerBox">
       <div class="song" id="answerSong"></div>
       <div class="artist" id="answerArtist"></div>
@@ -297,6 +300,7 @@
 </div>
 
 <script src="boards.js"></script>
+<script src="https://www.youtube.com/iframe_api" async></script>
 <script>
 /* =====================================================================
    GAME CONFIG
@@ -306,7 +310,7 @@
    - start: where in the video the clip begins (aim for a chorus!)
    - length (optional): clip length in seconds, overrides CLIP_SECONDS
    ===================================================================== */
-const CLIP_SECONDS = 7;
+const CLIP_SECONDS = 5;
 const POINT_VALUES = [100, 200, 300, 400, 500];
 
 /* Spare verified clues — swap any of these into boards.js:
@@ -455,6 +459,33 @@ const awardHint = document.getElementById("awardHint");
 
 let current = null; // { clue, value, key }
 
+/* One persistent player via the YouTube IFrame API. playVideo() runs
+   synchronously inside the Play-clip tap, which is the only way mobile
+   browsers allow un-muted playback. */
+let player = null;
+let playerReady = false;
+let pendingPlay = null;
+let clipLen = CLIP_SECONDS;
+let mode = "idle"; // "clip" while a hidden clip is playing, "reveal" after
+
+window.onYouTubeIframeAPIReady = () => {
+  player = new YT.Player("ytplayer", {
+    width: "100%",
+    height: "100%",
+    playerVars: { playsinline: 1, rel: 0, controls: 1, iv_load_policy: 3, fs: 0 },
+    events: {
+      onReady: () => {
+        playerReady = true;
+        if (pendingPlay) { const go = pendingPlay; pendingPlay = null; go(); }
+      },
+      // Sync the countdown to the moment audio actually starts
+      onStateChange: e => {
+        if (e.data === YT.PlayerState.PLAYING && mode === "clip") runTimer(clipLen);
+      },
+    },
+  });
+};
+
 function openClue(col, row) {
   const clue = cats()[col].clues[row];
   const value = POINT_VALUES[row];
@@ -465,28 +496,10 @@ function openClue(col, row) {
   awardRow.classList.remove("revealed");
   awardHint.classList.remove("revealed");
   playerWrap.classList.remove("visible", "revealed");
-  playerWrap.innerHTML = "";
+  mode = "idle";
+  if (playerReady) player.stopVideo();
   resetTimer();
   overlay.classList.add("open");
-}
-
-function embedSrc(clue, { clipOnly, autoplay }) {
-  const len = clue.length || CLIP_SECONDS;
-  const params = new URLSearchParams({
-    start: clue.start,
-    autoplay: autoplay ? 1 : 0,
-    rel: 0,
-    controls: clipOnly ? 0 : 1,
-  });
-  if (clipOnly) params.set("end", clue.start + len);
-  return `https://www.youtube.com/embed/${clue.yt}?${params}`;
-}
-
-function makeIframe(src) {
-  const iframe = document.createElement("iframe");
-  iframe.src = src;
-  iframe.allow = "autoplay; encrypted-media";
-  return iframe;
 }
 
 function resetTimer() {
@@ -504,17 +517,22 @@ function runTimer(seconds) {
 
 document.getElementById("playBtn").addEventListener("click", () => {
   if (!current) return;
-  playerWrap.innerHTML = "";
-  playerWrap.classList.remove("revealed");
-  const cover = document.createElement("div");
-  cover.className = "player-cover";
-  cover.innerHTML = "🎵<small>Listen…</small>";
-  const iframe = makeIframe(embedSrc(current.clue, { clipOnly: true, autoplay: true }));
-  const len = current.clue.length || CLIP_SECONDS;
-  // Start the countdown once the embed has loaded (playback starts right after)
-  iframe.addEventListener("load", () => setTimeout(() => runTimer(len), 400));
-  playerWrap.append(cover, iframe);
+  const clue = current.clue;
+  clipLen = clue.length || CLIP_SECONDS;
+  mode = "clip";
   playerWrap.classList.add("visible");
+  playerWrap.classList.remove("revealed");
+  resetTimer();
+  const go = () => {
+    player.loadVideoById({
+      videoId: clue.yt,
+      startSeconds: clue.start,
+      endSeconds: clue.start + clipLen,
+    });
+    player.playVideo();
+  };
+  if (playerReady) go();
+  else pendingPlay = go; // player still booting: clip starts as soon as it's ready
 });
 
 document.getElementById("revealBtn").addEventListener("click", () => {
@@ -525,9 +543,9 @@ document.getElementById("revealBtn").addEventListener("click", () => {
   awardRow.classList.add("revealed");
   awardHint.classList.add("revealed");
   renderAwardRow();
-  // Show the actual video with controls (paused at the clip start)
-  playerWrap.innerHTML = "";
-  playerWrap.appendChild(makeIframe(embedSrc(current.clue, { clipOnly: false, autoplay: false })));
+  // Show the actual video with controls, cued at the clip start
+  mode = "reveal";
+  if (playerReady) player.cueVideoById({ videoId: current.clue.yt, startSeconds: current.clue.start });
   playerWrap.classList.add("visible", "revealed");
   resetTimer();
 });
@@ -558,7 +576,8 @@ function closeClue() {
     save();
   }
   overlay.classList.remove("open");
-  playerWrap.innerHTML = ""; // stop any audio
+  mode = "idle";
+  if (playerReady) player.stopVideo();
   const tile = boardEl.querySelector(`[data-key="${current.key}"]`);
   if (tile) tile.classList.add("used");
   current = null;
